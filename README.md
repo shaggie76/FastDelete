@@ -4,8 +4,10 @@ FastDelete is a Windows command-line tool similar to the command-prompt "rd /s /
 (or rm -rf if you prefer) designed for multi-core systems with fast SSD storage.
 
 ```
-Syntax: FastDelete <Directory1> [Directory2...]
+Syntax: FastDelete [--keep-root] <Directory1> [Directory2...]
 ```
+
+If --keep-root is passed the directories specified will be emptied but not deleted.
 
 You probably won't notice a difference for small numbers of files but for a million
 files nested in 96 directories, FastDelete is over twice as fast on my i7-9750H laptop:

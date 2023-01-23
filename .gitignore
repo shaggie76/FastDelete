@@ -27,6 +27,8 @@
 *.wwdb
 *.opendb
 *.db
+.vs/
 ipch/
-debug/
-release/
+Debug/
+Release/
+TestData/

@@ -12,6 +12,10 @@
 #define ARRAY_COUNT(a) _countof(a)
 
 typedef std::vector<TCHAR*> TCharVector;
+typedef std::vector<HANDLE> HandleVector;
+
+static TCharVector sRootDirectories;
+static bool sKeepRoot = false;
 
 typedef ThreadQueue<TCHAR*> DirectoryQueue;
 static DirectoryQueue sDirectoryQueue;
@@ -132,13 +136,31 @@ static bool FastDeleteDir(const TCHAR* directory)
     {
         return(false);
     }
+   
+    if(sKeepRoot)
+    {
+        for(TCharVector::const_iterator i = sRootDirectories.begin(), end = sRootDirectories.end(); i != end; ++i)
+        {
+            // Note directory has trailing dir char but root may or may not: 
+            const TCHAR* root = *i;
+            if(_tcsnccmp(directory, root, dirLen - 1))
+            {
+                continue;
+            }
+            
+            if(!root[dirLen - 1] || ((root[dirLen - 1] == '\\') && !root[dirLen]))
+            {
+                return(false);
+            }
+        }
+    }
 
     if(haveDirectories)
     {
         // defer for cleanup later
         return(true);
     }
-   
+
     // _tprintf(_T("RemoveDirectory %s\n"), directory);
         
     if(!RemoveDirectory(directory))
@@ -180,20 +202,46 @@ static unsigned CALLBACK FastDeleteThread(void*)
     return(0);
 }
 
+static void PrintHelp()
+{
+    _fputts(TEXT("Syntax: FastDelete [--keep-root] <Directory1> [Directory2 ...]\n"), stderr);
+}
+
 int _tmain(int argc, TCHAR* argv[])
 {
     if(argc < 2)
     {
-        _fputts(TEXT("Syntax: FastDelete <Directory1> [Directory2 ...]\n"), stderr);
+        PrintHelp();
         return(1);
     }
 
-    TCharVector directories;
-    directories.reserve(argc - 1);
+    sRootDirectories.reserve(argc - 1);
 
-    for(int arg = 1; arg < argc; ++arg)
+    for(int i = 1; i < argc; ++i)
     {
-        TCHAR* directory = argv[arg];
+        TCHAR* arg = argv[i];
+
+        if((arg[0] == '-') || (arg[0] == '/'))
+        {
+            ++arg;
+            if(!_tcsicmp(arg, TEXT("h")) || !_tcsicmp(arg, TEXT("?")))
+            {
+                PrintHelp();
+                return(1);
+            }
+
+            if(!_tcscmp(arg, TEXT("-keep-root")))
+            {
+                sKeepRoot = true;
+                continue;
+            }
+
+            _ftprintf(stderr, TEXT("Unrecognized arg: %s\n"), argv[i]);
+            PrintHelp();
+            return(1);
+        }
+
+        TCHAR* directory = arg;
 
         DWORD attribs = GetFileAttributes(directory);
         if(attribs == INVALID_FILE_ATTRIBUTES)
@@ -208,11 +256,11 @@ int _tmain(int argc, TCHAR* argv[])
             _ftprintf(stderr, TEXT("%s is not a directory\n"), directory);
             return(1);
         }
-
-        directories.push_back(directory);
+    
+        sRootDirectories.push_back(directory);
     }
 
-    if(directories.empty())
+    if(sRootDirectories.empty())
     {
         return(0);
     }
@@ -230,7 +278,7 @@ int _tmain(int argc, TCHAR* argv[])
     SYSTEM_INFO systemInfo = {};
     GetSystemInfo(&systemInfo);
     
-    std::vector<HANDLE> threads;
+    HandleVector threads;
     threads.reserve(systemInfo.dwNumberOfProcessors);
 
     for(DWORD i = 0; i < systemInfo.dwNumberOfProcessors; ++i)
@@ -261,7 +309,7 @@ int _tmain(int argc, TCHAR* argv[])
 
     if(threads.size() == systemInfo.dwNumberOfProcessors)
     {
-        for(TCharVector::const_iterator i = directories.begin(), end = directories.end(); i != end; ++i)
+        for(TCharVector::const_iterator i = sRootDirectories.begin(), end = sRootDirectories.end(); i != end; ++i)
         {
             const TCHAR* directory = *i;
             size_t paramSize = _tcslen(directory) + 1;
