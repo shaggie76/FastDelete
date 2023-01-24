@@ -8,6 +8,8 @@ storage.
 Syntax: FastDelete [--keep-root] <Directory1> [Directory2...]
 ```
 
+Note it does not support deleting single files (just directories of files).
+
 If --keep-root is passed the directories specified will be emptied but not
 deleted.
 
