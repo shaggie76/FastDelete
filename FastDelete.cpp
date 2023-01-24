@@ -248,7 +248,7 @@ int _tmain(int argc, TCHAR* argv[])
         {
             // TODO: implement -f to suppress this like rm -f
             _ftprintf(stderr, TEXT("Could not find %s\n"), directory);
-            return(1);
+            continue;
         }
 
         if(attribs != FILE_ATTRIBUTE_DIRECTORY)
@@ -370,7 +370,8 @@ int _tmain(int argc, TCHAR* argv[])
     CloseHandle(sQueueCompleted);
     sQueueCompleted = nullptr;
 
-    for(TCharVector::iterator i = sDeferredDirectories.begin(), end = sDeferredDirectories.end(); i != end; ++i)
+    // Purge in reverse order 
+    for(TCharVector::reverse_iterator i = sDeferredDirectories.rbegin(), end = sDeferredDirectories.rend(); i != end; ++i)
     {
         TCHAR* directory = *i;
 
