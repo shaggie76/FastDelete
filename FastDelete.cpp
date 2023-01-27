@@ -173,6 +173,18 @@ static bool FastDeleteDir(const TCHAR* directory)
         return(true);
     }
 
+    DWORD attribs = GetFileAttributes(directory);
+
+    if
+    (
+        (attribs & FILE_ATTRIBUTE_READONLY) &&
+        !SetFileAttributes(directory, attribs & ~FILE_ATTRIBUTE_READONLY)  
+    )
+    {
+        _ftprintf(stderr, TEXT("SetFileAttributes(%s) failed [0x%08X]\n"), directory, GetLastError());
+        return(false);
+    }
+
     // _tprintf(_T("RemoveDirectory %s\n"), directory);
         
     if(!RemoveDirectory(directory))
@@ -263,7 +275,7 @@ int _tmain(int argc, TCHAR* argv[])
             continue;
         }
 
-        if(attribs != FILE_ATTRIBUTE_DIRECTORY)
+        if(!(attribs & FILE_ATTRIBUTE_DIRECTORY))
         {
             _ftprintf(stderr, TEXT("%s is not a directory\n"), directory);
             return(1);
@@ -392,7 +404,17 @@ int _tmain(int argc, TCHAR* argv[])
     {
         TCHAR* directory = *i;
 
-        if(!RemoveDirectory(directory))
+        DWORD attribs = GetFileAttributes(directory);
+
+        if
+        (
+            (attribs & FILE_ATTRIBUTE_READONLY) &&
+            !SetFileAttributes(directory, attribs & ~FILE_ATTRIBUTE_READONLY)  
+        )
+        {
+            _ftprintf(stderr, TEXT("SetFileAttributes(%s) failed [0x%08X]\n"), directory, GetLastError());
+        }
+        else if(!RemoveDirectory(directory))
         {
             _ftprintf(stderr, TEXT("RemoveDirectory(%s) failed [0x%08X]\n"), directory, GetLastError());
         }
