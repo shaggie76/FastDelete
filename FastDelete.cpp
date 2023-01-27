@@ -2,6 +2,7 @@
 #include <cstring>
 #include <cassert>
 #include <vector>
+#include <algorithm>
 
 #include <process.h>
 #include <tchar.h>
@@ -248,7 +249,7 @@ int _tmain(int argc, TCHAR* argv[])
         {
             // TODO: implement -f to suppress this like rm -f
             _ftprintf(stderr, TEXT("Could not find %s\n"), directory);
-            return(1);
+            continue;
         }
 
         if(attribs != FILE_ATTRIBUTE_DIRECTORY)
@@ -369,6 +370,12 @@ int _tmain(int argc, TCHAR* argv[])
 
     CloseHandle(sQueueCompleted);
     sQueueCompleted = nullptr;
+
+    // Reverse sort (we can't rely on queueing order)
+    std::sort(sDeferredDirectories.begin(), sDeferredDirectories.end(), [](const TCHAR* a, const TCHAR* b)
+    {
+        return(_tcsicmp(a, b) > 0);
+    });
 
     for(TCharVector::iterator i = sDeferredDirectories.begin(), end = sDeferredDirectories.end(); i != end; ++i)
     {
