@@ -122,6 +122,17 @@ static bool FastDeleteDir(const TCHAR* directory)
         //     continue;
         // }
 
+        if
+        (
+            (findData.dwFileAttributes & FILE_ATTRIBUTE_READONLY) &&
+            !SetFileAttributes(fileName, findData.dwFileAttributes & ~FILE_ATTRIBUTE_READONLY)  
+        )
+        {
+            _ftprintf(stderr, TEXT("SetFileAttributes(%s) failed [0x%08X]\n"), fileName, GetLastError());
+            haveFiles = true;
+            continue;
+        }
+
         // _tprintf(_T("DeleteFile %s\n"), fileName);
         
         if(!DeleteFile(fileName))

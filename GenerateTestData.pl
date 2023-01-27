@@ -9,6 +9,8 @@ my $PERL = $^X;
 my $SCRIPT = abs_path($0);
 $SCRIPT =~ s/\//\\/g;
 
+my $READ_ONLY = 0;
+
 my $TOTAL_FILES = 1024 * 1024;
 my $DIR_COUNT = $ENV{NUMBER_OF_PROCESSORS} * 8;
 
@@ -26,6 +28,11 @@ if(scalar(@ARGV) == 1)
         my $fd;
         open($fd, "> $fileName") or die($?);
         close($fd);
+
+        if($READ_ONLY)
+        {
+            chmod(0444, $fileName);
+        }
     }
 
     exit(0);
