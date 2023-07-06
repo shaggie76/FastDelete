@@ -3,6 +3,7 @@
 #include <cassert>
 #include <vector>
 #include <algorithm>
+#include <string>
 
 #include <process.h>
 #include <tchar.h>
@@ -12,10 +13,13 @@
 
 #define ARRAY_COUNT(a) _countof(a)
 
+typedef std::basic_string<TCHAR> String;
+
 typedef std::vector<TCHAR*> TCharVector;
+typedef std::vector<String> StringVector;
 typedef std::vector<HANDLE> HandleVector;
 
-static TCharVector sRootDirectories;
+static StringVector sRootDirectories;
 static bool sKeepRoot = false;
 
 typedef ThreadQueue<TCHAR*> DirectoryQueue;
@@ -74,7 +78,7 @@ static bool FastDeleteDir(const TCHAR* directory)
 
     do
     {
-        if(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        if((findData.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == FILE_ATTRIBUTE_DIRECTORY) 
         {
             if((findData.cFileName[0] == '.') && (!findData.cFileName[1] || ((findData.cFileName[1] == '.') && !findData.cFileName[2])))
             {
@@ -133,12 +137,26 @@ static bool FastDeleteDir(const TCHAR* directory)
             continue;
         }
 
-        // _tprintf(_T("DeleteFile %s\n"), fileName);
-        
-        if(!DeleteFile(fileName))
+        // Symbolic links to directories are deleted with RemoveDirectory:
+        if(findData.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY))
         {
-            _ftprintf(stderr, TEXT("DeleteFile(%s) failed [0x%08X]\n"), fileName, GetLastError());
-            haveFiles = true;
+            // _tprintf(_T("RemoveDirectory %s\n"), fileName);
+        
+            if(!RemoveDirectory(fileName))
+            {
+                _ftprintf(stderr, TEXT("RemoveDirectory(%s) failed [0x%08X]\n"), fileName, GetLastError());
+                haveFiles = true;
+            }
+        }
+        else
+        {
+            // _tprintf(_T("DeleteFile %s\n"), fileName);
+        
+            if(!DeleteFile(fileName))
+            {
+                _ftprintf(stderr, TEXT("DeleteFile(%s) failed [0x%08X]\n"), fileName, GetLastError());
+                haveFiles = true;
+            }
         }
     } while(FindNextFile(findHandle, &findData));
 
@@ -151,10 +169,10 @@ static bool FastDeleteDir(const TCHAR* directory)
    
     if(sKeepRoot)
     {
-        for(TCharVector::const_iterator i = sRootDirectories.begin(), end = sRootDirectories.end(); i != end; ++i)
+        for(StringVector::const_iterator i = sRootDirectories.begin(), end = sRootDirectories.end(); i != end; ++i)
         {
             // Note directory has trailing dir char but root may or may not: 
-            const TCHAR* root = *i;
+            const TCHAR* root = i->c_str();
             if(_tcsnccmp(directory, root, dirLen - 1))
             {
                 continue;
@@ -267,21 +285,43 @@ int _tmain(int argc, TCHAR* argv[])
 
         TCHAR* directory = arg;
 
-        DWORD attribs = GetFileAttributes(directory);
-        if(attribs == INVALID_FILE_ATTRIBUTES)
+        HANDLE handle = CreateFile(directory, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+
+        if(handle == INVALID_HANDLE_VALUE)
         {
             // TODO: implement -f to suppress this like rm -f
             _ftprintf(stderr, TEXT("Could not find %s\n"), directory);
             continue;
         }
 
-        if(!(attribs & FILE_ATTRIBUTE_DIRECTORY))
+        // RemoveDirectory will fail for reparse points unless given a fully-qualified path:
+        TCHAR fullPath[MAX_PATH];
+        bool success = false;
+
+        BY_HANDLE_FILE_INFORMATION info = {};
+        if(!GetFileInformationByHandle(handle, &info))
+        {
+            _ftprintf(stderr, TEXT("GetFileInformationByHandle(%s) failed [0x%08X]\n"), directory, GetLastError());
+        }
+        else if(!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
         {
             _ftprintf(stderr, TEXT("%s is not a directory\n"), directory);
+        }
+        else if(!GetFinalPathNameByHandle(handle, fullPath, ARRAY_COUNT(fullPath), FILE_NAME_NORMALIZED))
+        {
+            _ftprintf(stderr, TEXT("GetFinalPathNameByHandle(%s) failed [0x%08X]\n"), directory, GetLastError());
+        }
+        else
+        {
+            sRootDirectories.push_back(fullPath);
+            success = true;
+        }
+
+        CloseHandle(handle);
+        if(!success)
+        {
             return(1);
         }
-    
-        sRootDirectories.push_back(directory);
     }
 
     if(sRootDirectories.empty())
@@ -301,7 +341,7 @@ int _tmain(int argc, TCHAR* argv[])
 
     SYSTEM_INFO systemInfo = {};
     GetSystemInfo(&systemInfo);
-    
+
     HandleVector threads;
     threads.reserve(systemInfo.dwNumberOfProcessors);
 
@@ -333,10 +373,10 @@ int _tmain(int argc, TCHAR* argv[])
 
     if(threads.size() == systemInfo.dwNumberOfProcessors)
     {
-        for(TCharVector::const_iterator i = sRootDirectories.begin(), end = sRootDirectories.end(); i != end; ++i)
+        for(StringVector::const_iterator i = sRootDirectories.begin(), end = sRootDirectories.end(); i != end; ++i)
         {
-            const TCHAR* directory = *i;
-            size_t paramSize = _tcslen(directory) + 1;
+            const String& directory = *i;
+            size_t paramSize = directory.size() + 1;
     
             bool appendDirChar = (directory[paramSize - 2] != '\\') && (directory[paramSize - 2] != '/');
         
@@ -353,7 +393,7 @@ int _tmain(int argc, TCHAR* argv[])
                 break;
             }
 
-            errno_t error = _tcscpy_s(parameter, paramSize, directory);
+            errno_t error = _tcscpy_s(parameter, paramSize, directory.c_str());
             assert(!error);
 
             if(error)
